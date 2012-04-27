@@ -198,12 +198,12 @@ This allows you to, say, apply a fade transition upon pjaxing, with a waiting in
 
 ```js
 var duration = 400
-$('a.pjax').pjax('#main')
+$('a.pjax').pjax('#main', { duration: duration })
 $('#main')
   .on('pjax:start', function() { $(this).fadeOut(duration) })
   .on('pjax:waiting', function() {
       $(this)
-	    .html('<div style="width: 100%; text-align: center; padding-top: 2em;"><img src="waiting-big.gif" /></div>')
+	    .html('<div style="width: 100%; text-align: center;"><img src="waiting.gif" /></div>')
 		.show()
 	})
   .on('pjax:end',   function() { $(this).fadeIn(duration) })
