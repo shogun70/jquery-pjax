@@ -93,9 +93,10 @@ following additions:
 * `target`         - The Element that was clicked to start the pjax call.
 * `push`           - Whether to pushState the URL. Default: true (of course)
 * `replace`        - Whether to replaceState the URL. Default: false
-* `timeout`        - pjax sets this low, <1s. Set this higher if using a
-                     custom error handler. It's ms, so something like
-                     `timeout: 2000`
+* `timeout`        - pjax sets this high, 5s. It's ms, so the default is 
+                     `timeout: 5000`
+* `duration`       - The minimum duration for page transition in ms.
+                     This can be used to allow page-out animations to complete.
 * `fragment`       - A String selector that specifies a sub-element to
                      be pulled out of the response HTML and inserted
                      into the `container`. Useful if the server always returns
@@ -186,22 +187,29 @@ for a `title` or `data-title` attribute and use any value it finds.
 
 ## events
 
-pjax will fire two events on the container you've asked it to load your
+pjax will fire three events on the container you've asked it to load your
 reponse body into:
 
-* `pjax:start` - Fired when a pjax ajax request begins.
-* `pjax:end`   - Fired when a pjax ajax request ends.
+* `pjax:start`   - Fired when a pjax ajax request begins.
+* `pjax:waiting` - Fired when the minimum `duration` has expired and new content is not yet loaded
+* `pjax:end`     - Fired when a pjax ajax request ends.
 
-This allows you to, say, display a loading indicator upon pjaxing:
+This allows you to, say, apply a fade transition upon pjaxing, with a waiting indicator if content is not "instantaneous"
 
 ```js
+var duration = 400
 $('a.pjax').pjax('#main')
 $('#main')
-  .on('pjax:start', function() { $('#loading').show() })
-  .on('pjax:end',   function() { $('#loading').hide() })
+  .on('pjax:start', function() { $(this).fadeOut(duration) })
+  .on('pjax:waiting', function() {
+      $(this)
+	    .html('<div style="width: 100%; text-align: center; padding-top: 2em;"><img src="waiting-big.gif" /></div>')
+		.show()
+	})
+  .on('pjax:end',   function() { $(this).fadeIn(duration) })
 ```
 
-Because these events bubble, you can also set them on the document:
+Because these events bubble, you can also set them on the document to show a loading message
 
 ```js
 $('a.pjax').pjax()

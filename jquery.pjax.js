@@ -18,6 +18,9 @@
 //             $(container).html(xhr.responseBody)
 //      push - Whether to pushState the URL. Defaults to true (of course).
 //   replace - Want to use replaceState instead? That's cool.
+//  duration - Minimum time to wait before new content is paged in. 
+//             Allows animation to complete when paging out content.
+//             If new content hasn't arrived then pjax:waiting is fired
 //
 // For convenience the first parameter can be either the container or
 // the options object.
@@ -139,13 +142,16 @@ var pjax = $.pjax = function( options ) {
     return !event.isDefaultPrevented()
   }
 
-  var timeoutTimer
+  var timeoutTimer, durationTimer
+  var success, complete, error
 
   options.beforeSend = function(xhr, settings) {
+    var timeout = settings.timeout;
     if (settings.timeout > 0) {
       timeoutTimer = setTimeout(function() {
-        if (fire('pjax:timeout', [xhr, options]))
-          xhr.abort('timeout')
+        if (!fire('pjax:timeout', [xhr, options])) return
+        if (durationTimer) clearTimeout(durationTimer);
+        xhr.abort('timeout')
       }, settings.timeout)
 
       // Clear timeout setting so jquerys internal timeout isn't invoked
@@ -165,6 +171,21 @@ var pjax = $.pjax = function( options ) {
 
     if (!fire('pjax:beforeSend', [xhr, settings])) return false
 
+    var duration = settings.duration;
+    if (timeoutTimer && duration >= timeout) duration = timeout - 1
+    if (duration >= 0 && duration != null) durationTimer = setTimeout(function() {
+      durationTimer = null
+      if (complete) {
+        if (success) success();
+        if (error) error(); // success and error are mutually exclusive
+        complete();
+        return;
+      }
+      
+      // otherwise fire the waiting event
+      fire('pjax:waiting', [xhr, options])
+    }, duration)
+
     if (options.push && !options.replace) {
       // Cache current container element before replacing it
       containerCache.push(pjax.state.id, context.clone(true, true).contents())
@@ -180,6 +201,10 @@ var pjax = $.pjax = function( options ) {
   }
 
   options.complete = function(xhr, textStatus) {
+    complete = function() { _complete.call(options, xhr, textStatus) }
+    if (!durationTimer) complete();
+  }
+  function _complete(xhr, textStatus) {
     if (timeoutTimer)
       clearTimeout(timeoutTimer)
 
@@ -194,6 +219,10 @@ var pjax = $.pjax = function( options ) {
   }
 
   options.error = function(xhr, textStatus, errorThrown) {
+    error = function() { _error.call(xhr, textStatus, errorThrown) }
+    if (!durationTimer) error();
+  }
+  function _error(xhr, textStatus, errorThrown) {
     var container = extractContainer("", xhr, options)
 
     // DEPRECATED: Invoke original `error` handler
@@ -205,6 +234,10 @@ var pjax = $.pjax = function( options ) {
   }
 
   options.success = function(data, status, xhr) {
+    success = function() { _success.call(options, data, status, xhr) }
+    if (!durationTimer) success();
+  }
+  function _success(data, status, xhr) {
     var container = extractContainer(data, xhr, options)
 
     if (!container.contents) {
@@ -217,7 +250,8 @@ var pjax = $.pjax = function( options ) {
       url: container.url,
       container: context.selector,
       fragment: options.fragment,
-      timeout: options.timeout
+      timeout: options.timeout,
+      duration: options.duration
     }
 
     if (options.push || options.replace) {
@@ -469,7 +503,7 @@ pjax.reload = function(container, options) {
 
 
 pjax.defaults = {
-  timeout: 650,
+  timeout: 5000,
   push: true,
   replace: false,
   type: 'GET',
@@ -590,7 +624,8 @@ $(window).bind('popstate', function(event){
         push: false,
         fragment: state.fragment,
         timeout: state.timeout,
-        scrollTo: false
+        scrollTo: false,
+        duration: state.duration
       }
 
       if (contents) {
@@ -600,19 +635,23 @@ $(window).bind('popstate', function(event){
         // end.pjax event is deprecated
         container.trigger('start.pjax', [null, options])
 
-        container.html(contents)
-        pjax.state = state
+        setTimeout(function() {
+          container.html(contents)
+          pjax.state = state
 
-        container.trigger('pjax:end', [null, options])
-        // end.pjax event is deprecated
-        container.trigger('end.pjax', [null, options])
+          container.trigger('pjax:end', [null, options])
+          // end.pjax event is deprecated
+          container.trigger('end.pjax', [null, options])
+          container[0].offsetHeight
+        }, state.duration || 0);
+        
       } else {
         $.pjax(options)
+        // Force reflow/relayout before the browser tries to restore the
+        // scroll position.
+        container[0].offsetHeight
       }
 
-      // Force reflow/relayout before the browser tries to restore the
-      // scroll position.
-      container[0].offsetHeight
     } else {
       window.location = location.href
     }
